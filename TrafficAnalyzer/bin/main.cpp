@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 
 #include <rte_eal.h>
 #include <rte_common.h>
@@ -7,12 +8,8 @@
 #include "lib/TrafficAnalyzer.hpp"
 #include "lib/TrafficReader.hpp"
 
-/*Ужасное решение, нужно придумать получше*/
-ipv6_filter_args IPv6Filter::readed_args = ipv6_filter_args{{0}, {0}, 0, 0, 0, 0, 0, 0};
-/*Ужасное решение, нужно придумать получше*/
-ipv4_filter_args IPv4Filter::readed_args = ipv4_filter_args{0, 0, 0, 0, 0, 0, 0, 0};
-
-void InitDPDK(int argc, char **argv) {
+void InitDPDK(int argc, char **argv) 
+{
     int ret = rte_eal_init(argc, argv);
     
     if (ret < 0) {
@@ -20,7 +17,8 @@ void InitDPDK(int argc, char **argv) {
     }
 }
 
-void parse(TrafficAnalyzer& filters) {
+void parse(TrafficAnalyzer& filters) 
+{
     
     std::cout << "Input count of filters: ";
     int filter_count;
@@ -121,7 +119,7 @@ void parse(TrafficAnalyzer& filters) {
                         args.port_src = rte_cpu_to_be_16(std::stoi(buff));
                     }
 
-                    filters.add_ipv6_filter(IPv6Filter(args));
+                    filters.add_ipv6_filter(args);
 
                     break;
                 }
@@ -141,8 +139,13 @@ void parse(TrafficAnalyzer& filters) {
     }
 }
 
-int main(int argc, char **argv) {
-    InitDPDK(argc, argv);
+int main(int argc, char **argv) 
+{
+    int ret = rte_eal_init(argc, argv);
+    
+    if (ret < 0) {
+        rte_exit(EXIT_FAILURE, "ERROR.\nrte_eal_init failed\n");
+    }
 
     TrafficAnalyzer analyzer;
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include <rte_mbuf.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
@@ -20,10 +22,13 @@ struct ipv4_filter_args {
 
 class IPv4Filter {
 public:
-    IPv4Filter(const ipv4_filter_args& masks) : masks_(masks) {}
+    using args = ipv4_filter_args;
+
+    IPv4Filter(const args& masks) : masks_(masks) {}
 
     inline bool 
-    check_packet() const noexcept {
+    check_packet(args& readed_args) const noexcept 
+    {
         return ((masks_.is_any_ip_src == 0) || (masks_.ip_src == readed_args.ip_src))         &&
                ((masks_.is_any_ip_dist == 0) || (masks_.ip_dist == readed_args.ip_dist))      &&
                ((masks_.is_any_port_src == 0) || (masks_.port_src == readed_args.port_src))   &&
@@ -31,7 +36,8 @@ public:
     }
 
     static inline bool 
-    check_packet_type(const rte_mbuf *packet) {
+    check_packet_type(const rte_mbuf *packet, args& readed_args) 
+    {
         if (rte_pktmbuf_mtod(packet, struct rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
 
             return false;
@@ -63,14 +69,12 @@ public:
     }
 
     inline void 
-    print_discription() const noexcept {
+    print_discription() const noexcept 
+    {
         std::cout << dscr_;
     }
 
 private:
-    ipv4_filter_args masks_;
+    args masks_;
     const char* dscr_;
-    
-    /*Ужасное решение, нужно придумать получше*/
-    static ipv4_filter_args readed_args;
 };

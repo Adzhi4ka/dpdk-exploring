@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include <rte_mbuf.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
@@ -20,26 +22,30 @@ struct ipv6_filter_args {
 
 class IPv6Filter {
 public:
+    using args = ipv6_filter_args;
 
-    IPv6Filter(const ipv6_filter_args& args) :
-        masks_(args) {}
+    IPv6Filter(const args& masks) :
+        masks_(masks) {}
 
 
     inline bool 
-    check_packet() const noexcept {
-        return check_dist_ip()                                                                 &&
-               check_src_ip()                                                                  &&
+    check_packet(const args& readed_args) const noexcept 
+    {
+        return check_dist_ip(readed_args.ip_dist)                                              &&
+               check_src_ip(readed_args.ip_src)                                                &&
                ((masks_.is_any_port_src == 0) || (masks_.port_src == readed_args.port_src))    &&
                ((masks_.is_any_port_dist == 0) || (masks_.port_dist == readed_args.port_dist));
     }
 
     inline void 
-    print_discription() const noexcept {
+    print_discription() const noexcept 
+    {
         std::cout << dscr_;
     }
 
     static inline bool 
-    check_packet_type(const rte_mbuf *packet) {
+    check_packet_type(const rte_mbuf *packet, args& readed_args) 
+    {
         if (rte_pktmbuf_mtod(packet, struct rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
 
             return false;
@@ -71,20 +77,18 @@ public:
     }
 
 private:
-    ipv6_filter_args masks_;
+    args masks_;
     const char* dscr_;
 
-    /*Ужасное решение, нужно придумать получше*/
-    static ipv6_filter_args readed_args;
-
     inline bool 
-    check_src_ip() const noexcept {
+    check_src_ip(const uint8_t* ip_src) const noexcept 
+    {
         if (masks_.is_any_ip_src == 0) {
             return true;
         }
 
         for (int i = 0; i < 16; ++i) {
-            if (masks_.ip_src[i] != readed_args.ip_src[i]) {
+            if (masks_.ip_src[i] != ip_src[i]) {
 
                 return false;
             }
@@ -94,13 +98,14 @@ private:
     }
 
     inline bool 
-    check_dist_ip() const noexcept {
+    check_dist_ip(const uint8_t* ip_dist) const noexcept 
+    {
         if (masks_.is_any_ip_dist == 0) {
             return true;
         }
 
         for (int i = 0; i < 16; ++i) {
-            if (masks_.ip_dist[i] != readed_args.ip_dist[i]) {
+            if (masks_.ip_dist[i] != ip_dist[i]) {
 
                 return false;
             }

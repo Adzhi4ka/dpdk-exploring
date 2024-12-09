@@ -11,17 +11,20 @@
 class TrafficAnalyzer {
 public:
     void
-    add_ipv4_filter(const IPv4Filter& filter) noexcept {
-        ipv4_filters_.add_filter(filter);
+    add_ipv4_filter(IPv4Filter&& filter) noexcept 
+    {
+        ipv4_filters_.add_filter(std::move(filter));
     }
 
     void
-    add_ipv6_filter(const IPv6Filter& filter) noexcept {
-        ipv6_filters_.add_filter(filter);
+    add_ipv6_filter(IPv6Filter&& filter) noexcept 
+    {
+        ipv6_filters_.add_filter(std::move(filter));
     }
 
     void 
-    analyze(rte_mbuf *packet) {
+    analyze(rte_mbuf *packet) noexcept
+    {
         if(ipv4_filters_.check_packet(packet)) {
 
             return;
@@ -36,7 +39,8 @@ public:
     }
 
     void 
-    print_stats() const {
+    print_stats() const noexcept
+    {
         ipv4_filters_.print_statistic();
         ipv6_filters_.print_statistic();
         printf("Count of unaccepted packet: %ld", unaccepted_packet_count);
