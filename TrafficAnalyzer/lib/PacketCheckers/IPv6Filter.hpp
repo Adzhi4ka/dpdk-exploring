@@ -31,10 +31,10 @@ public:
     inline bool 
     check_packet(const args& readed_args) const noexcept 
     {
-        return check_dist_ip(readed_args.ip_dist)                                              &&
-               check_src_ip(readed_args.ip_src)                                                &&
-               ((masks_.is_any_port_src == 0) || (masks_.port_src == readed_args.port_src))    &&
-               ((masks_.is_any_port_dist == 0) || (masks_.port_dist == readed_args.port_dist));
+        return check_dist_ip(readed_args.ip_dist)                                      &&
+               check_src_ip(readed_args.ip_src)                                        &&
+               ((masks_.is_any_port_src) || (masks_.port_src == readed_args.port_src)) &&
+               ((masks_.is_any_port_dist) || (masks_.port_dist == readed_args.port_dist));
     }
 
     inline void 
@@ -46,7 +46,7 @@ public:
     static inline bool 
     check_packet_type(const rte_mbuf *packet, args& readed_args) 
     {
-        if (rte_pktmbuf_mtod(packet, struct rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
+        if (rte_pktmbuf_mtod(packet, rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
 
             return false;
         }
@@ -83,7 +83,7 @@ private:
     inline bool 
     check_src_ip(const uint8_t* ip_src) const noexcept 
     {
-        if (masks_.is_any_ip_src == 0) {
+        if (masks_.is_any_ip_src) {
             return true;
         }
 
@@ -100,7 +100,7 @@ private:
     inline bool 
     check_dist_ip(const uint8_t* ip_dist) const noexcept 
     {
-        if (masks_.is_any_ip_dist == 0) {
+        if (masks_.is_any_ip_dist) {
             return true;
         }
 

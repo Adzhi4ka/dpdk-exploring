@@ -1,7 +1,5 @@
 #pragma once
 
-#include <deque>
-
 #include "PacketCheckers/FilterDecorator.hpp"
 
 template <typename T>

@@ -35,46 +35,58 @@ public:
         uint16_t q;
         struct rte_eth_dev_info dev_info;
 
-        if (!rte_eth_dev_is_valid_port(port))
+        if (!rte_eth_dev_is_valid_port(port)) {
+
             return -1;
+        }
 
         memset(&port_conf, 0, sizeof(struct rte_eth_conf));
 
         retval = rte_eth_dev_info_get(port, &dev_info);
         if (retval != 0) {
-            printf("Error during getting device (port %u) info: %s\n",
-                    port, strerror(-retval));
+
             return retval;
         }
 
         /* Configure the Ethernet device. */
         retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
-        if (retval != 0)
+        if (retval != 0) {
+            std::cout << rte_strerror(-retval);
+
             return retval;
+        }
+
 
         retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
-        if (retval != 0)
+        if (retval != 0) {
+
             return retval;
+        }
 
         /* Allocate and set up 1 RX queue per Ethernet port. */
         for (q = 0; q < rx_rings; q++) {
             retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
                     rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-            if (retval < 0)
+            if (retval < 0) {
+
                 return retval;
+            }
         }
 
         /* Starting Ethernet port. 8< */
         retval = rte_eth_dev_start(port);
-        /* >8 End of starting of ethernet port. */
-        if (retval < 0)
-            return retval;
 
-        /* Enable RX in promiscuous mode for the Ethernet device. */
-        retval = rte_eth_promiscuous_enable(port);
-        /* End of setting RX port in promiscuous mode. */
-        if (retval != 0)
+        if (retval < 0) {
+
             return retval;
+        }
+
+        // retval = rte_eth_promiscuous_enable(port);
+        // /* End of setting RX port in promiscuous mode. */
+        // if (retval != 0) {
+        //         std::cout << "\n===============6===============\n";
+        //         return retval;
+        //     }
 
         return 0;
     }
@@ -87,8 +99,6 @@ public:
         uint32_t nb_ports;
         nb_ports = rte_eth_dev_count_avail();
 
-        std::cout << nb_ports << "ASDASDASDASASDASD";
-
         mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", 512 * nb_ports, 256, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 
 
@@ -96,11 +106,8 @@ public:
             rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 
         RTE_ETH_FOREACH_DEV(portid)
-            if (port_init(portid, mbuf_pool) != 0)
-                rte_exit(EXIT_FAILURE, "Cannot init port %u \n", portid);
-
-        if (rte_lcore_count() > 1)
-            printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
+            if (int ret = port_init(portid, mbuf_pool) != 0)
+                std::cout << rte_strerror(-ret);
     }
 
     inline void 

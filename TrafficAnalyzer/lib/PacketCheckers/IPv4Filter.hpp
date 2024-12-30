@@ -29,16 +29,16 @@ public:
     inline bool 
     check_packet(args& readed_args) const noexcept 
     {
-        return ((masks_.is_any_ip_src == 0) || (masks_.ip_src == readed_args.ip_src))         &&
-               ((masks_.is_any_ip_dist == 0) || (masks_.ip_dist == readed_args.ip_dist))      &&
-               ((masks_.is_any_port_src == 0) || (masks_.port_src == readed_args.port_src))   &&
-               ((masks_.is_any_port_dist == 0) || (masks_.port_dist == readed_args.port_dist));
+        return ((masks_.is_any_ip_src) || (masks_.ip_src == readed_args.ip_src))         &&
+               ((masks_.is_any_ip_dist) || (masks_.ip_dist == readed_args.ip_dist))      &&
+               ((masks_.is_any_port_src) || (masks_.port_src == readed_args.port_src))   &&
+               ((masks_.is_any_port_dist) || (masks_.port_dist == readed_args.port_dist));
     }
 
     static inline bool 
     check_packet_type(const rte_mbuf *packet, args& readed_args) 
     {
-        if (rte_pktmbuf_mtod(packet, struct rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
+        if (rte_pktmbuf_mtod(packet, rte_ether_hdr *)->ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4)) {
 
             return false;
         }
