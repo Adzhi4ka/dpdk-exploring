@@ -8,30 +8,30 @@
 #include <stdio.h>
 
 #include <iostream>
+#include <chrono>
 
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
 
 #define NUM_MBUFS 8191
 #define MBUF_CACHE_SIZE 250
-#define BURST_SIZE 32
 
 static inline int
 port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 {
-	struct rte_eth_conf port_conf;
+	rte_eth_conf port_conf = {0};
 	const uint16_t rx_rings = 1, tx_rings = 1;
 	uint16_t nb_rxd = RX_RING_SIZE;
 	uint16_t nb_txd = TX_RING_SIZE;
 	int retval;
 	uint16_t q;
-	struct rte_eth_dev_info dev_info;
-	struct rte_eth_txconf txconf;
+	rte_eth_dev_info dev_info;
+	rte_eth_txconf txconf;
 
 	if (!rte_eth_dev_is_valid_port(port))
 		return -1;
 
-	memset(&port_conf, 0, sizeof(struct rte_eth_conf));
+	memset(&port_conf, 0, sizeof(rte_eth_conf));
 
 	retval = rte_eth_dev_info_get(port, &dev_info);
 	if (retval != 0) {
@@ -44,26 +44,21 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 		port_conf.txmode.offloads |=
 			RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
 
-	/* Configure the Ethernet device. */
+
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
 	if (retval != 0)
 		return retval;
-
 	retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
-	if (retval != 0)
-		return retval;
+	if (retval != 0) {
+		printf("Error during getting device (port %u) info: %s\n",
+				port, strerror(-retval));
 
-	/* Allocate and set up 1 RX queue per Ethernet port. */
-	for (q = 0; q < rx_rings; q++) {
-		retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
-				rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-		if (retval < 0)
-			return retval;
+		return retval;
 	}
 
 	txconf = dev_info.default_txconf;
 	txconf.offloads = port_conf.txmode.offloads;
-	/* Allocate and set up 1 TX queue per Ethernet port. */
+
 	for (q = 0; q < tx_rings; q++) {
 		retval = rte_eth_tx_queue_setup(port, q, nb_txd,
 				rte_eth_dev_socket_id(port), &txconf);
@@ -71,14 +66,11 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 			return retval;
 	}
 
-	/* Starting Ethernet port. 8< */
 	retval = rte_eth_dev_start(port);
-	/* >8 End of starting of ethernet port. */
 	if (retval < 0)
 		return retval;
 
-	/* Display the port MAC address. */
-	struct rte_ether_addr addr;
+	rte_ether_addr addr;
 	retval = rte_eth_macaddr_get(port, &addr);
 	if (retval != 0)
 		return retval;
@@ -87,71 +79,77 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
 			port, RTE_ETHER_ADDR_BYTES(&addr));
 
-	// /* Enable RX in promiscuous mode for the Ethernet device. */
-	// retval = rte_eth_promiscuous_enable(port);
-	// /* End of setting RX port in promiscuous mode. */
-	// if (retval != 0)
-	// 	return retval;
-
 	return 0;
 }
 
 int main(int argc, char **argv) {
-	struct rte_mempool *mbuf_pool;
-	unsigned nb_ports;
+	char errbuf[PCAP_ERRBUF_SIZE];
+	std::string file_name;
+	rte_mempool *mbuf_pool;
+	uint32_t nb_ports;
+	pcap_t *handle;
+	pcap_pkthdr header;
+    const u_char *packet_data;
 	uint16_t portid = 0;
 
-	/* Initializion the Environment Abstraction Layer (EAL). 8< */
 	int ret = rte_eal_init(argc, argv);
 	if (ret < 0)
 		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
-	/* >8 End of initialization the Environment Abstraction Layer (EAL). */
 
 	argc -= ret;
 	argv += ret;
 
-	/* Check that there is an even number of ports to send/receive on. */
 	nb_ports = rte_eth_dev_count_avail();
 
-	/* Creates a new mempool in memory to hold the mbufs. */
+	std::cerr << nb_ports;
 
-	/* Allocates mempool to hold the mbufs. 8< */
 	mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,
 		MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
-	/* >8 End of allocating mempool to hold mbuf. */
 
     port_init(portid, mbuf_pool);
 
-    pcap_t *handle;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    handle = pcap_open_offline("TEST", errbuf);
+	std::cout << "Input file name\n";
+	std::cin >> file_name;
+
+    handle = pcap_open_offline(file_name.c_str(), errbuf);
     if (handle == NULL) {
-        rte_exit(EXIT_FAILURE, "Ошибка при открытии PCAP файла: %s\n", errbuf);
+        rte_exit(EXIT_FAILURE, "Error during open file: %s\n", errbuf);
     }
 
-    int xd;
-    std::cin >> xd;
+	auto start = std::chrono::high_resolution_clock::now();
 
-    struct pcap_pkthdr header;
-    const u_char *packet_data;
+	uint64_t packet_cnt = 0;
+	uint64_t byte_cnt = 0;
+
     while ((packet_data = pcap_next(handle, &header)) != NULL) {
-        struct rte_mbuf *pkt = rte_pktmbuf_alloc(mbuf_pool);
-        if (pkt == NULL) {
-            rte_exit(EXIT_FAILURE, "Ошибка выделения пакета\n");
+        rte_mbuf *pkt = rte_pktmbuf_alloc(mbuf_pool);
+        if (pkt == nullptr) {
+            rte_exit(EXIT_FAILURE, "Error packet alloc\n");
         }
 
         rte_memcpy(rte_pktmbuf_mtod(pkt, void *), packet_data, header.len);
         pkt->data_len = header.len;
         pkt->pkt_len = header.len;
 
-        if (rte_eth_tx_burst(portid, 0, &pkt, 1) < 0) {
-            rte_exit(EXIT_FAILURE, "Ошибка отправки пакета\n");
-        }
+		++packet_cnt;
+		byte_cnt += header.len;
 
-        rte_pktmbuf_free(pkt);
+        if (rte_eth_tx_burst(portid, 0, &pkt, 1) < 0) {
+            rte_exit(EXIT_FAILURE, "Error during send packet\n");
+        }
     }
 
+	std::chrono::duration<double> duration = std::chrono::high_resolution_clock::now() - start;
+
+	std::cout << "Total packet: " << packet_cnt << '\n';
+	std::cout << "Packet per second: " << ((double) packet_cnt / duration.count()) * 1000000000 << '\n';
+
+	std::cout << "Total byte: " << byte_cnt << '\n';
+	std::cout << "byte per second: " << ((double) byte_cnt / duration.count()) * 1000000000 << '\n';
+
     pcap_close(handle);
+
+	std::cin >> file_name;
 
     return 0;
 }

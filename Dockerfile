@@ -1,6 +1,9 @@
 FROM ubuntu:latest
-WORKDIR /home/adzhi4ka/dpdkExporing
-ENV PATH="$PATH:/home/adzhi4ka/dpdkExporing"
+COPY . /app
+
+WORKDIR /app
+
+ENV PATH="$PATH:/app"
  
 RUN dpkg --add-architecture amd64 && \
     apt-get update && \

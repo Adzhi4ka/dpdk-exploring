@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <chrono>
 
 #include <rte_mempool.h>
 
@@ -39,10 +40,10 @@ public:
     }
 
     void 
-    print_stats() const noexcept
+    print_stats(const std::chrono::duration<double>& duration) const noexcept
     {
-        ipv4_filters_.print_statistic();
-        ipv6_filters_.print_statistic();
+        ipv4_filters_.print_statistic(duration);
+        ipv6_filters_.print_statistic(duration);
         printf("Count of unaccepted packet: %ld", unaccepted_packet_count);
     }
 

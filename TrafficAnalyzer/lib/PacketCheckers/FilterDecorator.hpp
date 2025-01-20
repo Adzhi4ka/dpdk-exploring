@@ -39,10 +39,14 @@ public:
     }
 
     void 
-    print_statistic() const noexcept 
+    print_statistic(const std::chrono::duration<double>& duration) const noexcept 
     {
-        printf("Packed count: %ld", get_packet_count_);
-        printf("Byte count:   %ld", get_byte_count_);
+        std::cout << "Total packet: " << get_packet_count_ << '\n';
+        std::cout << "Packet per second: " << ((double) get_packet_count_ / duration.count()) * 1000000000 << '\n';
+
+        std::cout << "Total byte: " << get_byte_count_ << '\n';
+        std::cout << "byte per second: " << ((double) get_byte_count_ / duration.count()) * 1000000000 << '\n';
+        std::cout << "\n=================================================================================================================\n";
     }
 
 private:

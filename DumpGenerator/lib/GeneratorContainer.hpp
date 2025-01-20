@@ -16,9 +16,7 @@ struct UsingGenerator {
 
 class GeneratorContainer {
 public:
-    GeneratorContainer(std::size_t dump_count) {
-        dump_count_ = dump_count;
-    }
+    GeneratorContainer() : use_count_(0) {}
 
     void 
     AddGenerator(std::unique_ptr<IGenerator> generator, uint64_t use_count) {
@@ -64,12 +62,13 @@ public:
 private:
     void 
     Write(rte_mbuf* packet_dump) {
+        pcap_pkthdr pcap_hdr = {0};
+
         if (packet_dump == nullptr) {
 
             return;
         }
 
-        pcap_pkthdr pcap_hdr = {0};
         pcap_hdr.caplen = packet_dump->pkt_len;
         pcap_hdr.len = packet_dump->pkt_len;
         pcap_dump((u_char *)pcap_dumper, &pcap_hdr, rte_pktmbuf_mtod(packet_dump, u_char *));
@@ -78,8 +77,6 @@ private:
     }
 
     std::vector<UsingGenerator> generators_;
-
-    std::size_t dump_count_;
 
     uint64_t use_count_;
 

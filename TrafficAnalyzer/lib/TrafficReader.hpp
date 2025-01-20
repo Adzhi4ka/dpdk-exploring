@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 
 #include <rte_common.h>
@@ -16,8 +17,6 @@
 #define PKT_MBUF_DATA_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
 #define MAGIC_NUMBER        128
 
-rte_eth_conf port_conf = {};
-
 
 class TrafficReader {
 public:
@@ -25,22 +24,23 @@ public:
     {}
 
     static inline int
-    port_init(uint16_t port, struct rte_mempool *mbuf_pool)
+    port_init(uint16_t port, rte_mempool *mbuf_pool)
     {
-        struct rte_eth_conf port_conf;
-        const uint16_t rx_rings = 1, tx_rings = 0;
+        rte_eth_conf port_conf = {0};
+        const uint16_t rx_rings = 1, tx_rings = 1;
         uint16_t nb_rxd = 1024;
-        uint16_t nb_txd = 0;
+        uint16_t nb_txd = 1024;
         int retval;
         uint16_t q;
-        struct rte_eth_dev_info dev_info;
+        rte_eth_dev_info dev_info;
+        rte_eth_rxconf rxconf;
 
         if (!rte_eth_dev_is_valid_port(port)) {
 
             return -1;
         }
 
-        memset(&port_conf, 0, sizeof(struct rte_eth_conf));
+        memset(&port_conf, 0, sizeof(rte_eth_conf));
 
         retval = rte_eth_dev_info_get(port, &dev_info);
         if (retval != 0) {
@@ -63,17 +63,18 @@ public:
             return retval;
         }
 
-        /* Allocate and set up 1 RX queue per Ethernet port. */
+        rxconf = dev_info.default_rxconf;
+	    rxconf.offloads = port_conf.rxmode.offloads;
+
         for (q = 0; q < rx_rings; q++) {
             retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
-                    rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+                    rte_eth_dev_socket_id(port), &rxconf, mbuf_pool);
             if (retval < 0) {
 
                 return retval;
             }
         }
 
-        /* Starting Ethernet port. 8< */
         retval = rte_eth_dev_start(port);
 
         if (retval < 0) {
@@ -81,12 +82,16 @@ public:
             return retval;
         }
 
-        // retval = rte_eth_promiscuous_enable(port);
-        // /* End of setting RX port in promiscuous mode. */
-        // if (retval != 0) {
-        //         std::cout << "\n===============6===============\n";
-        //         return retval;
-        //     }
+
+        rte_ether_addr addr;
+        retval = rte_eth_macaddr_get(port, &addr);
+        if (retval != 0)
+            return retval;
+
+        printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+                " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+                port, RTE_ETHER_ADDR_BYTES(&addr));
+
 
         return 0;
     }
@@ -99,7 +104,7 @@ public:
         uint32_t nb_ports;
         nb_ports = rte_eth_dev_count_avail();
 
-        mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", 512 * nb_ports, 256, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+        mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", 8191, 256, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 
 
         if (mbuf_pool == NULL)
@@ -113,25 +118,30 @@ public:
     inline void 
     read_traffic() noexcept 
     {
-        rte_mbuf* packets[32];
+        rte_mbuf* packets[63];
         uint32_t nb_rx;
+        std::chrono::_V2::system_clock::time_point start;
+        std::chrono::duration<double> duration;
 
         while (true) {
             char choice;
 
-            nb_rx = rte_eth_rx_burst(0, 0, packets, 32);
-            std::cout << "Analyze packets" << nb_rx << '\n';
-            for (int i = 0; i < nb_rx; ++i) {
-                rte_pktmbuf_refcnt_update(packets[i], 1);
+            start = std::chrono::high_resolution_clock::now();
+            nb_rx = rte_eth_rx_burst(0, 0, packets, 63);
+            std::cout << "Analyze packets: " << nb_rx << '\n';
+            
+            for (uint32_t i = 0; i < nb_rx; ++i) {
                 analyzer_.analyze(packets[i]);
-                rte_pktmbuf_refcnt_update(packets[i], -1);
+                rte_pktmbuf_free(packets[i]);
             }
+
+            duration += std::chrono::high_resolution_clock::now() - start;
 
             std::cout << "Continue: [y/n]";
             std::cin >> choice;
 
             if (choice == 'n') {
-                analyzer_.print_stats();
+                analyzer_.print_stats(duration);
 
                 break;
             }

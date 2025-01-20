@@ -55,8 +55,8 @@ public:
 
         if (ipv6_hdr->proto == IPPROTO_TCP) {
             const rte_tcp_hdr *tcp_hdr = rte_pktmbuf_mtod_offset(packet, rte_tcp_hdr *, sizeof(rte_ether_hdr) + sizeof(rte_ipv6_hdr));
-            memcpy(readed_args.ip_dist, ipv6_hdr->dst_addr, 16);
-            memcpy(readed_args.ip_src, ipv6_hdr->src_addr, 16);
+            memcpy(readed_args.ip_dist, &ipv6_hdr->dst_addr, 16);
+            memcpy(readed_args.ip_src, &ipv6_hdr->src_addr, 16);
             readed_args.port_dist = tcp_hdr->dst_port;
             readed_args.port_src = tcp_hdr->src_port;
 
@@ -65,8 +65,8 @@ public:
 
         if (ipv6_hdr->proto == IPPROTO_UDP) {
             const rte_udp_hdr *udp_hdr = rte_pktmbuf_mtod_offset(packet, rte_udp_hdr *, sizeof(rte_ether_hdr) + sizeof(rte_ipv6_hdr));
-            memcpy(readed_args.ip_dist, ipv6_hdr->dst_addr, 16);
-            memcpy(readed_args.ip_src, ipv6_hdr->src_addr, 16);
+            memcpy(readed_args.ip_dist, &ipv6_hdr->dst_addr, 16);
+            memcpy(readed_args.ip_src, &ipv6_hdr->src_addr, 16);
             readed_args.port_dist = udp_hdr->dst_port;
             readed_args.port_src = udp_hdr->src_port;
 

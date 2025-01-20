@@ -35,10 +35,10 @@ public:
     }
 
     void 
-    print_statistic() const noexcept 
+    print_statistic(const std::chrono::duration<double>& duration) const noexcept 
     {
         for (const FilterDecorator<T>& i : filters_) {
-            i.print_statistic();
+            i.print_statistic(duration);
         }
     }
 

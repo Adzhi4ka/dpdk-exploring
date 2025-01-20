@@ -5,10 +5,10 @@
 #include "lib/Generators/TrashGenerator.hpp"
 
 #include <memory>
-#include <iostream>
+#include <fstream>
 #include <cstring>
 
-int port_init(uint16_t port, struct rte_mempool *mbuf_pool)
+int port_init(uint16_t port, rte_mempool *mbuf_pool)
 {
     struct rte_eth_conf port_conf;
     const uint16_t rx_rings = 1, tx_rings = 0;
@@ -27,14 +27,14 @@ int port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 
     retval = rte_eth_dev_info_get(port, &dev_info);
     if (retval != 0) {
-        std::cout << rte_strerror(-retval);
+        std::cout << rte_strerror(-retval) << '\n';
 
         return retval;
     }
 
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
-        std::cout << rte_strerror(-retval);
+        std::cout << rte_strerror(-retval) << '\n';
 
         return retval;
     }
@@ -42,7 +42,7 @@ int port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 
     retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
-        std::cout << rte_strerror(-retval);
+        std::cout << rte_strerror(-retval) << '\n';
 
         return retval;
     }
@@ -51,7 +51,7 @@ int port_init(uint16_t port, struct rte_mempool *mbuf_pool)
         retval = rte_eth_rx_queue_setup(port, q, nb_rxd, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
 
         if (retval < 0) {
-            std::cout << rte_strerror(-retval);
+            std::cout << rte_strerror(-retval) << '\n';
 
             return retval;
         }
@@ -60,241 +60,266 @@ int port_init(uint16_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-int parse_custom_args(int argc, char *argv[]) {
-    if (argc == 0) {
-        return 0;
-    }
-
-    if (argc > 1) {
-        return -1;
-    }
-
-    if (!std::strcmp(argv[0], "--real")) {
-        return -1;
-    }
-
-    std::cout << "Available " << rte_eth_dev_count_avail() << "ports\n";
-
-    return 1;
-}
-
-void parse_user_args(GeneratorContainer& gen_cont, bool is_real_supported) {
-    int generators_count;
-    std::cout << "Input count of generators: ";
-    std::cin >> generators_count;
-
-    gen_cont = GeneratorContainer(generators_count);
+void parse_user_args(GeneratorContainer& gen_cont) {
+    char type_of_generator;
     rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
-                                                     generators_count,
+                                                     255,
                                                      0, 
                                                      RTE_MBUF_DEFAULT_BUF_SIZE,
                                                      UINT16_MAX, 
-                                                     rte_socket_id());
+                                                     SOCKET_ID_ANY);
 
-    std::cout << "SUPPORTED GENERATORS\n t - trash dumper\n r - real traffic dumper\n m - manual dumper\n";
+    if (mbuf_pool == nullptr) {
 
-    if (is_real_supported) {
-        uint32_t portid = 0;
-        RTE_ETH_FOREACH_DEV(portid)
-        if (int ret = port_init(portid, mbuf_pool) != 0)
-            std::cout << rte_strerror(-ret);
+        rte_exit(EXIT_FAILURE, "%s", rte_strerror(rte_errno));
     }
 
-    for (int i = 0; i < generators_count; ++i) {
-        char type_of_generator;
-        uint64_t use_count;
+    std::cout << "SUPPORTED GENERATORS\n";
+    std::cout << "f - from file\n";
+    std::cout << "r - real traffic dumper\n";
+    std::cout << "q - stop\n";
 
-        std::cout << "Type of generator\n";
-        std::cin >> type_of_generator;
+    std::cout << "Type of generator: ";
+    std::cin >> type_of_generator;
 
-        std::cout << "Use count\n";
-        std::cin >> use_count;
-
+    while (type_of_generator != 'q') {
         switch (type_of_generator) {
-        case 't':
-        {
-            uint16_t info_size;
-            std::cout << "Input count of data\n";
-            std::cin >> info_size;
-            gen_cont.AddGenerator(
-                std::make_unique<TrashGenerator>(
-                    TrashGenerator(rte_pktmbuf_alloc(mbuf_pool), info_size)),
-                use_count);
-
-            continue;
-        }
         case 'r':
         {
+            uint64_t use_count;
             uint16_t port_id;
-            std::cout << "Input port id";
+
+            std::cout << "Use count\n";
+            std::cin >> use_count;
+
+            std::cout << "Input port id\n";
             std::cin >> port_id;
-            gen_cont.AddGenerator(std::make_unique<RealGenerator>(
-                RealGenerator(rte_pktmbuf_alloc(mbuf_pool), port_id)),
+
+            if (int ret = port_init(port_id, mbuf_pool) != 0) {
+                std::cout << rte_strerror(-ret) << '\n';
+
+                break;
+            }
+
+            gen_cont.AddGenerator(
+                std::make_unique<RealGenerator>(rte_pktmbuf_alloc(mbuf_pool), port_id),
                 use_count);
 
-            continue;
+            break;
         }
-        case 'm':
+
+        case 'f':
         {
-            uint16_t info_size;
-            std::cout << "Input count of data\n";
-            std::cin >> info_size;
+            std::string file_name;
+            std::ifstream fin;
 
-            std::cout << "IPv4 - 1   or   IPv6 - 2\n";
-            char type_of_network;
-            std::cin >> type_of_network;
+            std::cout << "File name: ";
+            std::cin >> file_name;
 
-            if (type_of_network == '1') {
-                IPv4Tag ipv4;
+            fin.open(file_name);
 
-                std::cout << "Source ip: \n";
-                std::cin >> ipv4.ip_src;
-                ipv4.ip_src = rte_cpu_to_be_32(ipv4.ip_src);
+            if (!fin) {
+                std::cout << "File dont find\n";
 
-                std::cout << "Dist ip: \n";
-                std::cin >> ipv4.ip_dst;
-                ipv4.ip_dst = rte_cpu_to_be_32(ipv4.ip_dst);
+                continue;
+            }
 
-                std::cout << "TCP - 1   or   UDP - 2\n";
-                char type_of_transport;
-                std::cin >> type_of_transport;
+            while (!fin.eof()) {
+                char file_type_generator;
 
-                if (type_of_transport == '1') {
-                    TcpTag tcp;
+                fin >> file_type_generator;
 
-                    std::cout << "Source port: \n";
-                    std::cin >> tcp.port_src;
-                    tcp.port_src = rte_cpu_to_be_16(tcp.port_src);
+                switch (file_type_generator) {
+                case 'm':
+                {
+                    std::string type_of_network;
+                    fin >> type_of_network;
 
-                    std::cout << "Dist port: \n";
-                    std::cin >> tcp.port_dst;
-                    tcp.port_dst = rte_cpu_to_be_16(tcp.port_dst);
+                    if (type_of_network == "ipv4") {
+                        IPv4Tag ipv4;
+                        std::string type_of_transport;
 
-                    gen_cont.AddGenerator(
-                        std::make_unique<ManualGenerator<IPv4Tag, TcpTag>>(
-                            ManualGenerator<IPv4Tag, TcpTag>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv4, tcp)),
-                        use_count);
-                
+                        fin >> ipv4.ip_src;
+                        fin >> ipv4.ip_dst;
+
+                        ipv4.ip_src = rte_cpu_to_be_32(ipv4.ip_src);
+                        ipv4.ip_dst = rte_cpu_to_be_32(ipv4.ip_dst);
+
+                        fin >> type_of_transport;
+
+                        if (type_of_transport == "tcp") {
+                            TcpTag tcp;
+                            uint16_t info_size;
+                            uint64_t use_count;
+
+                            fin >> tcp.port_src;
+                            fin >> tcp.port_dst;
+
+                            tcp.port_src = rte_cpu_to_be_16(tcp.port_src);
+                            tcp.port_dst = rte_cpu_to_be_16(tcp.port_dst);
+
+                            fin >> info_size;
+                            fin >> use_count;
+
+                            gen_cont.AddGenerator(
+                                std::make_unique<ManualGenerator<IPv4Tag, TcpTag>>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv4, tcp),
+                                use_count);
+                        
+                            continue;
+                        }
+
+                        if (type_of_transport == "udp") {
+                            UdpTag udp;
+                            uint16_t info_size;
+                            uint64_t use_count;
+
+                            fin >> udp.port_src;
+                            fin >> udp.port_dst;
+
+                            udp.port_src = rte_cpu_to_be_16(udp.port_src);
+                            udp.port_dst = rte_cpu_to_be_16(udp.port_dst);
+
+                            fin >> info_size;
+                            fin >> use_count;
+
+                            gen_cont.AddGenerator(
+                                std::make_unique<ManualGenerator<IPv4Tag, UdpTag>>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv4, udp),
+                                use_count);
+                        
+                            continue;
+                        }
+
+                        continue;
+                    }
+
+                    if (type_of_network == "ipv6") {
+                        IPv6Tag ipv6;
+                        std::string adr_buf;
+                        std::string type_of_transport;
+
+                        fin >> adr_buf;
+                        for (int j = 0; j < 16; ++j) {
+                            ipv6.ip_src[j] = adr_buf[j];
+                        }
+
+                        fin >> adr_buf;
+                        for (int j = 0; j < 16; ++j) {
+                            ipv6.ip_dst[j] = adr_buf[j];
+                        }
+
+                        fin >> type_of_transport;
+                        if (type_of_transport == "tcp") {
+                            TcpTag tcp;
+                            uint16_t info_size;
+                            uint64_t use_count;
+
+                            fin >> tcp.port_src;
+                            fin >> tcp.port_dst;
+
+                            tcp.port_src = rte_cpu_to_be_16(tcp.port_src);
+                            tcp.port_dst = rte_cpu_to_be_16(tcp.port_dst);
+
+                            fin >> info_size;
+                            fin >> use_count;
+
+                            gen_cont.AddGenerator(
+                                std::make_unique<ManualGenerator<IPv6Tag, TcpTag>>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv6, tcp),
+                                use_count);
+                        
+                            continue;
+                        }
+
+                        if (type_of_transport == "udp") {
+                            UdpTag udp;
+                            uint16_t info_size;
+                            uint64_t use_count;
+
+                            fin >> udp.port_src;
+                            fin >> udp.port_dst;
+
+                            udp.port_src = rte_cpu_to_be_16(udp.port_src);
+                            udp.port_dst = rte_cpu_to_be_16(udp.port_dst);
+
+                            fin >> info_size;
+                            fin >> use_count;
+
+                            gen_cont.AddGenerator(
+                                std::make_unique<ManualGenerator<IPv6Tag, UdpTag>>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv6, udp),
+                                use_count);
+                        
+                            continue;
+                        }
+
+                        continue;
+                    }
+
                     continue;
                 }
+                
+                case 't':
+                {
+                    uint16_t info_size;
+                    uint64_t use_count;
 
-                if (type_of_transport == '2') {
-                    UdpTag udp;
-
-                    std::cout << "Source port: \n";
-                    std::cin >> udp.port_src;
-                    udp.port_src = rte_cpu_to_be_16(udp.port_src);
-
-                    std::cout << "Dist port: \n";
-                    std::cin >> udp.port_dst;
-                    udp.port_dst = rte_cpu_to_be_16(udp.port_dst);
+                    fin >> info_size;
+                    fin >> use_count;
 
                     gen_cont.AddGenerator(
-                        std::make_unique<ManualGenerator<IPv4Tag, UdpTag>>(
-                            ManualGenerator<IPv4Tag, UdpTag>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv4, udp)),
+                        std::make_unique<TrashGenerator>(
+                            TrashGenerator(rte_pktmbuf_alloc(mbuf_pool), info_size)),
                         use_count);
-                
-                    continue;
+
+                    break;
                 }
 
-                continue;
+                default:
+
+                    break;
+                }
             }
 
-            IPv6Tag ipv6;
-
-            std::cout << "Source ip: \n";
-            for (int j = 0; j < 16; ++j) {
-                std::cin >> ipv6.ip_src[j];
-            }
-
-            std::cout << "Dist ip: \n";
-            for (int j = 0; j < 16; ++j) {
-                std::cin >> ipv6.ip_dst[j];
-            }
-
-            std::cout << "TCP - 1   or   UDP - 2\n";
-            char type_of_transport;
-            std::cin >> type_of_transport;
-
-            if (type_of_transport == '1') {
-                TcpTag tcp;
-
-                std::cout << "Source port: \n";
-                std::cin >> tcp.port_src;
-                tcp.port_src = rte_cpu_to_be_16(tcp.port_src);
-
-                std::cout << "Dist port: \n";
-                std::cin >> tcp.port_dst;
-                tcp.port_dst = rte_cpu_to_be_16(tcp.port_dst);
-
-                gen_cont.AddGenerator(
-                    std::make_unique<ManualGenerator<IPv6Tag, TcpTag>>(
-                        ManualGenerator<IPv6Tag, TcpTag>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv6, tcp)),
-                    use_count);
-            
-                continue;
-            }
-
-            if (type_of_transport == '2') {
-                UdpTag udp;
-
-                std::cout << "Source port: \n";
-                std::cin >> udp.port_src;
-                udp.port_src = rte_cpu_to_be_16(udp.port_src);
-
-                std::cout << "Dist port: \n";
-                std::cin >> udp.port_dst;
-                udp.port_dst = rte_cpu_to_be_16(udp.port_dst);
-
-                gen_cont.AddGenerator(
-                    std::make_unique<ManualGenerator<IPv6Tag, UdpTag>>(
-                        ManualGenerator<IPv6Tag, UdpTag>(rte_pktmbuf_alloc(mbuf_pool), info_size, ipv6, udp)),
-                    use_count);
-            
-                continue;
-            }
+            break;
         }
-            continue;
+
         default:
-            rte_exit(EXIT_FAILURE, "ERROR.\nUncorrect input\n");
+            rte_exit(EXIT_FAILURE, "%s", "ERROR.\nUncorrect input\n");
         }
+
+        std::cout << "Type of generator: ";
+        std::cin >> type_of_generator;
     }
 }
 
 int main(int argc, char *argv[]) {
-    int ret = rte_eal_init(argc, argv);
-
-    if (ret < 0) {
-        rte_exit(EXIT_FAILURE, "ERROR.\nrte_eal_init failed\n");
-    }
-
-    argc -= ret;
-    argv += ret;
-
-    ret = parse_custom_args(argc, argv);
-
-    if (ret < 0) {
-        rte_exit(EXIT_FAILURE, "ERROR.\nParse custom args failed\n");
-    }
-
-    GeneratorContainer gen_cont(0);
-    parse_user_args(gen_cont, ret == 0);
-
-    std::cout << "Direct or Random";
+    int ret;
     char type_of_write;
+    std::string file_name;
+
+
+    ret = rte_eal_init(argc, argv);
+
+    if (ret < rte_eal_init(argc, argv)) {
+        rte_exit(EXIT_FAILURE, "%s", rte_strerror(rte_errno));
+    }
+
+    GeneratorContainer gen_cont;
+    parse_user_args(gen_cont);
+
+    std::cout << "Direct or Random [1/2]: ";
     std::cin >> type_of_write;
 
-    std::cout << "File name";
-    std::string file_name;
+    std::cout << "File name: ";
     std::cin >> file_name;
 
     if (type_of_write == '1') {
         gen_cont.WriteDirect(file_name);
+        std::cout << "End\n";
 
         return 0;
     }
 
     gen_cont.WriteRandom(file_name);
+    std::cout << "End\n";
 
     return 0;
 }

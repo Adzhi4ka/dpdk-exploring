@@ -1,12 +1,12 @@
-#include <cstdlib>
-#include <iostream>
-#include <memory>
+#include "lib/TrafficAnalyzer.hpp"
+#include "lib/TrafficReader.hpp"
 
 #include <rte_eal.h>
 #include <rte_common.h>
 
-#include "lib/TrafficAnalyzer.hpp"
-#include "lib/TrafficReader.hpp"
+#include <cstdlib>
+#include <iostream>
+#include <memory>
 
 void InitDPDK(int argc, char **argv) 
 {
@@ -19,21 +19,18 @@ void InitDPDK(int argc, char **argv)
 
 void parse(TrafficAnalyzer& filters) 
 {
+    int filter_count;
+    std::string buff;
     
     std::cout << "Input count of filters: ";
-    int filter_count;
     std::cin >> filter_count;
-    
-    std::string buff;
-
-    if (filter_count <= 0) {
-        filter_count = 10;
-    }
 
     for (int i = 0; i < filter_count; ++i) {
         char filter_type;
 
         std::cout << "Type of filter: ";
+        std::cout << "a - ipv4\n";
+        std::cout << "b - ipv6\n";
         std::cin >> filter_type;
 
         while (true) {
@@ -43,6 +40,7 @@ void parse(TrafficAnalyzer& filters)
                 {
                     ipv4_filter_args args;
 
+                    std::cout << "Ip dist [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -51,6 +49,7 @@ void parse(TrafficAnalyzer& filters)
                         args.ip_dist = rte_cpu_to_be_32(std::stoi(buff));
                     }
 
+                    std::cout << "Ip src [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -59,6 +58,7 @@ void parse(TrafficAnalyzer& filters)
                         args.ip_src = rte_cpu_to_be_32(std::stoi(buff));
                     }
 
+                    std::cout << "Port dst [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -67,6 +67,7 @@ void parse(TrafficAnalyzer& filters)
                         args.port_dist = rte_cpu_to_be_16(std::stoi(buff));
                     }
 
+                    std::cout << "Port src [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -79,10 +80,12 @@ void parse(TrafficAnalyzer& filters)
 
                     break;
                 }
+
                 case 'b':
                 {
                     ipv6_filter_args args;
 
+                    std::cout << "Ip dist [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -93,6 +96,7 @@ void parse(TrafficAnalyzer& filters)
                         }
                     }
 
+                    std::cout << "Ip src [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -103,6 +107,7 @@ void parse(TrafficAnalyzer& filters)
                         }
                     }
 
+                    std::cout << "Port dist [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -111,6 +116,7 @@ void parse(TrafficAnalyzer& filters)
                         args.port_dist = rte_cpu_to_be_16(std::stoi(buff));
                     }
 
+                    std::cout << "Port src [any/number]: ";
                     std::cin >> buff;
 
                     if (buff == "any") {
@@ -123,9 +129,6 @@ void parse(TrafficAnalyzer& filters)
 
                     break;
                 }
-
-                case 'q':
-                    rte_exit(EXIT_SUCCESS, "");
 
                 default:
                     std::cout << "Uncorrect command";
