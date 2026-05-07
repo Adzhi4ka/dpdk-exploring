@@ -1,0 +1,154 @@
+#pragma once
+
+#include <chrono>
+#include <iostream>
+
+#include <rte_common.h>
+#include <rte_mbuf.h>
+#include <rte_ethdev.h>
+#include <rte_eal.h>
+#include <rte_mempool.h>
+#include <rte_ip.h>
+#include <rte_ether.h>
+#include <rte_lcore.h>
+
+#include "TrafficAnalyzer.hpp"
+
+#define PKT_MBUF_DATA_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
+#define MAGIC_NUMBER        128
+
+
+class TrafficReader {
+public:
+    TrafficReader(const TrafficAnalyzer& analyzer) noexcept : analyzer_(analyzer) 
+    {}
+
+    static inline int
+    port_init(uint16_t port, rte_mempool *mbuf_pool)
+    {
+        rte_eth_conf port_conf = {0};
+        const uint16_t rx_rings = 1, tx_rings = 1;
+        uint16_t nb_rxd = 1024;
+        uint16_t nb_txd = 1024;
+        int retval;
+        uint16_t q;
+        rte_eth_dev_info dev_info;
+        rte_eth_rxconf rxconf;
+
+        if (!rte_eth_dev_is_valid_port(port)) {
+
+            return -1;
+        }
+
+        memset(&port_conf, 0, sizeof(rte_eth_conf));
+
+        retval = rte_eth_dev_info_get(port, &dev_info);
+        if (retval != 0) {
+
+            return retval;
+        }
+
+        /* Configure the Ethernet device. */
+        retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
+        if (retval != 0) {
+            std::cout << rte_strerror(-retval);
+
+            return retval;
+        }
+
+
+        retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
+        if (retval != 0) {
+
+            return retval;
+        }
+
+        rxconf = dev_info.default_rxconf;
+	    rxconf.offloads = port_conf.rxmode.offloads;
+
+        for (q = 0; q < rx_rings; q++) {
+            retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
+                    rte_eth_dev_socket_id(port), &rxconf, mbuf_pool);
+            if (retval < 0) {
+
+                return retval;
+            }
+        }
+
+        retval = rte_eth_dev_start(port);
+
+        if (retval < 0) {
+
+            return retval;
+        }
+
+
+        rte_ether_addr addr;
+        retval = rte_eth_macaddr_get(port, &addr);
+        if (retval != 0)
+            return retval;
+
+        printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+                " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+                port, RTE_ETHER_ADDR_BYTES(&addr));
+
+
+        return 0;
+    }
+
+    inline void 
+    setup() const noexcept
+    {
+        uint16_t portid;
+        rte_mempool *mbuf_pool;
+        uint32_t nb_ports;
+        nb_ports = rte_eth_dev_count_avail();
+
+        mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", 8191, 256, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+
+
+        if (mbuf_pool == NULL)
+            rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+
+        RTE_ETH_FOREACH_DEV(portid)
+            if (int ret = port_init(portid, mbuf_pool) != 0)
+                std::cout << rte_strerror(-ret);
+    }
+
+    inline void 
+    read_traffic() noexcept 
+    {
+        rte_mbuf* packets[63];
+        uint32_t nb_rx;
+        std::chrono::_V2::system_clock::time_point start;
+        std::chrono::duration<double> duration;
+
+        while (true) {
+            char choice;
+
+            start = std::chrono::high_resolution_clock::now();
+            nb_rx = rte_eth_rx_burst(0, 0, packets, 63);
+            std::cout << "Analyze packets: " << nb_rx << '\n';
+            
+            for (uint32_t i = 0; i < nb_rx; ++i) {
+                analyzer_.analyze(packets[i]);
+                rte_pktmbuf_free(packets[i]);
+            }
+
+            duration += std::chrono::high_resolution_clock::now() - start;
+
+            std::cout << "Continue: [y/n]";
+            std::cin >> choice;
+
+            if (choice == 'n') {
+                analyzer_.print_stats(duration);
+
+                break;
+            }
+        }
+    }
+
+private:
+    TrafficAnalyzer analyzer_;
+    rte_mempool *mbuf_pool_;
+};
